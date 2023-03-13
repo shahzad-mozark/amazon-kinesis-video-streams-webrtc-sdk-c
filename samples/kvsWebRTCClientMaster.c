@@ -442,7 +442,7 @@ PVOID sendVideoPackets(PVOID args)
         // Also, it's very unlikely to have a delay greater than SAMPLE_VIDEO_FRAME_DURATION, so the logic assumes that this is always
         // true for simplicity.
         elapsed = lastFrameTime - startTime;
-        THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);
+        /*THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);*/
         lastFrameTime = GETTIME();
     }
 CleanUp:
