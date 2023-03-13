@@ -51,8 +51,10 @@ AVPacket* packets[10];
 int read_frame(void* opaque, uint8_t* buff, int buff_size)
 {
     int bytesRead = read(fileno(stdin), buff, buff_size);
-    if (bytesRead == 0)
+    if (bytesRead == 0) {
+        printf("Nothing to read on stdin!\n");
         return -1;
+    }
     return bytesRead;
 }
 void* fakeStdinRead();
@@ -407,10 +409,9 @@ PVOID sendVideoPackets(PVOID args)
         /*}*/
         /*printf("okeeeeeh\n");*/
         /*printf("okeeh\n");*/
-        while (av_read_frame(context, packet) != STATUS_SUCCESS) {
-            usleep(1 / 15);
-            /*printf("read frame failed!");*/
-        }
+        while (av_read_frame(context, packet) != STATUS_SUCCESS)
+            ;
+
         pSampleConfiguration->pVideoFrameBuffer = packet->data;
         pSampleConfiguration->videoBufferSize = packet->size;
         frame.frameData = pSampleConfiguration->pVideoFrameBuffer;
@@ -442,7 +443,7 @@ PVOID sendVideoPackets(PVOID args)
         // Also, it's very unlikely to have a delay greater than SAMPLE_VIDEO_FRAME_DURATION, so the logic assumes that this is always
         // true for simplicity.
         elapsed = lastFrameTime - startTime;
-        THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);
+        /*THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);*/
         lastFrameTime = GETTIME();
     }
 CleanUp:
