@@ -360,52 +360,52 @@ STATUS read_from_stdin(uint8_t** frame, uint32_t* size, enum STDIN_READ_DATA_TYP
 
 PVOID sendAudioPackets(PVOID args)
 {
-    STATUS retStatus = STATUS_SUCCESS;
-    PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;
-    Frame frame;
-    UINT32 fileIndex = 0, frameSize;
-    CHAR filePath[MAX_PATH_LEN + 1];
-    UINT32 i;
-    STATUS status;
+    /*STATUS retStatus = STATUS_SUCCESS;*/
+    /*PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;*/
+    /*Frame frame;*/
+    /*UINT32 fileIndex = 0, frameSize;*/
+    /*CHAR filePath[MAX_PATH_LEN + 1];*/
+    /*UINT32 i;*/
+    /*STATUS status;*/
 
-    if (pSampleConfiguration == NULL) {
-        printf("[KVS Master] sendAudioPackets(): operation returned status code: 0x%08x \n", STATUS_NULL_ARG);
-        goto CleanUp;
-    }
+    /*if (pSampleConfiguration == NULL) {*/
+    /*printf("[KVS Master] sendAudioPackets(): operation returned status code: 0x%08x \n", STATUS_NULL_ARG);*/
+    /*goto CleanUp;*/
+    /*}*/
 
-    frame.presentationTs = 0;
+    /*frame.presentationTs = 0;*/
 
-    while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {
-        int ret = read_from_stdin(&frame.frameData, &frameSize, STDIN_READ_AUDIO);
-        if (ret != STATUS_SUCCESS) {
-            printf("read_failed\n");
-        }
-        // based on bitrate of samples/h264SampleFrames/frame-*
-        MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);
-        pSampleConfiguration->pVideoFrameBuffer = frame.frameData;
-        pSampleConfiguration->videoBufferSize = frameSize;
-        frame.frameData = pSampleConfiguration->pVideoFrameBuffer;
-        frame.size = pSampleConfiguration->videoBufferSize;
-        frame.presentationTs += SAMPLE_AUDIO_FRAME_DURATION;
+    /*while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {*/
+    /*int ret = read_from_stdin(&frame.frameData, &frameSize, STDIN_READ_AUDIO);*/
+    /*if (ret != STATUS_SUCCESS) {*/
+    /*printf("read_failed\n");*/
+    /*}*/
+    /*// based on bitrate of samples/h264SampleFrames/frame-**/
+    /*MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);*/
+    /*pSampleConfiguration->pVideoFrameBuffer = frame.frameData;*/
+    /*pSampleConfiguration->videoBufferSize = frameSize;*/
+    /*frame.frameData = pSampleConfiguration->pVideoFrameBuffer;*/
+    /*frame.size = pSampleConfiguration->videoBufferSize;*/
+    /*frame.presentationTs += SAMPLE_AUDIO_FRAME_DURATION;*/
 
-        MUTEX_LOCK(pSampleConfiguration->streamingSessionListReadLock);
-        for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
-            status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pAudioRtcRtpTransceiver, &frame);
-            if (status != STATUS_SRTP_NOT_READY_YET) {
-                if (status != STATUS_SUCCESS) {
-#ifdef VERBOSE
-                    printf("writeFrame() failed with 0x%08x\n", status);
-#endif
-                }
-            }
-        }
-        MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);
-        /*THREAD_SLEEP(SAMPLE_AUDIO_FRAME_DURATION);*/
-    }
+    /*MUTEX_LOCK(pSampleConfiguration->streamingSessionListReadLock);*/
+    /*for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {*/
+    /*status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pAudioRtcRtpTransceiver, &frame);*/
+    /*if (status != STATUS_SRTP_NOT_READY_YET) {*/
+    /*if (status != STATUS_SUCCESS) {*/
+    /*#ifdef VERBOSE*/
+    /*printf("writeFrame() failed with 0x%08x\n", status);*/
+    /*#endif*/
+    /*}*/
+    /*}*/
+    /*}*/
+    /*MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);*/
+    /*[>THREAD_SLEEP(SAMPLE_AUDIO_FRAME_DURATION);<]*/
+    /*}*/
 
-CleanUp:
+    /*CleanUp:*/
 
-    return (PVOID) (ULONG_PTR) retStatus;
+    /*return (PVOID) (ULONG_PTR) retStatus;*/
 }
 
 PVOID sampleReceiveVideoFrame(PVOID args)
