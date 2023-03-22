@@ -242,8 +242,6 @@ if("${CMAKE_C_COMPILER_ID}" MATCHES "GNU|Clang")
     enableSanitizer("undefined")
   endif()
 endif()
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lavcodec -lavformat -lavutil")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lavcodec -lavformat -lavutil")
 
 # Uncomment below line for debug heap
 # add_definitions(-DHEAP_DEBUG)
