@@ -1,4 +1,7 @@
-#include "Samples.h"
+/*#include "Samples.h"*/
+#include "LocalSamples.h"
+#define ffmpeg 0
+#if ffmpeg
 #include <libavcodec/avcodec.h>
 #include <libavcodec/codec.h>
 #include <libavcodec/codec_id.h>
@@ -7,13 +10,28 @@
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 #include <libavutil/avutil.h>
+#include <libavutil/error.h>
 #include <libavutil/mem.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
+#endif
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <pwd.h>
 
+char* error_no[1024];
+enum STDIN_READ_DATA_TYPE {
+    STDIN_READ_VIDEO,
+    STDIN_READ_AUDIO,
+
+};
 VOID onDataMessage(UINT64 customData, PRtcDataChannel pDataChannel, BOOL isBinary, PBYTE pMessage, UINT32 pMessageLen)
 {
     UNUSED_PARAM(customData);
@@ -40,27 +58,34 @@ VOID OnDc(UINT64 customData, PRtcDataChannel pRtcDataChannel)
 extern PSampleConfiguration gSampleConfiguration;
 
 // #define VERBOSE
-FILE* fp;
+int audio_pipe;
+int video_pipe;
+
+#if ffmpeg
 AVFormatContext* context;
 uint8_t* inbuff;
 AVIOContext* iocontext;
-volatile int fakeread_conditionvar = 0;
 AVPacket* packet;
 AVPacket* packets[10];
+#endif
 
 int read_frame(void* opaque, uint8_t* buff, int buff_size)
 {
-    int bytesRead = read(fileno(stdin), buff, buff_size);
+    int bytesRead = read(video_pipe, buff, buff_size);
     if (bytesRead == 0) {
         printf("Nothing to read on stdin!\n");
         return -1;
     }
     return bytesRead;
 }
-void* fakeStdinRead();
 INT32 main(INT32 argc, CHAR* argv[])
 {
-    pthread_t fakeReadThread;
+    char* video_pipe_location = "/tmp/scrcpy_video";
+    char* audio_pipe_location = "/tmp/scrcpy_audio";
+    video_pipe = open(video_pipe_location, O_RDONLY);
+    audio_pipe = open(audio_pipe_location, O_RDONLY);
+    printf("%d\n", video_pipe);
+    printf("%d\n", audio_pipe);
     STATUS retStatus = STATUS_SUCCESS;
     UINT32 frameSize;
     PSampleConfiguration pSampleConfiguration = NULL;
@@ -108,6 +133,7 @@ INT32 main(INT32 argc, CHAR* argv[])
     printf("[KVS Master] Finished setting audio and video handlers\n");
 
     // Check if the samples are present
+#if ffmpeg
     context = avformat_alloc_context();
     inbuff = av_malloc(32879);
     iocontext = NULL;
@@ -134,37 +160,7 @@ INT32 main(INT32 argc, CHAR* argv[])
     avcodec_parameters_to_context(codec_context, localcodecparams);
     avcodec_open2(codec_context, localCodec, NULL);
     packet = av_packet_alloc();
-    // assuming the first frame will always be there when the program starts
-    // av_read_frame always reads something, if data is not at stdin then it will wait till there is data in stdin the program might hang here if the
-    // pipe is not sending any data
-    /*printf("reading for the frame\n");*/
-    /*if (av_read_frame(context, packet) != STATUS_SUCCESS) {*/
-    /*if (packet->size <= 0) {*/
-    /*printf("no frames in stdin\n");*/
-    /*return 0;*/
-    /*}*/
-    /*};*/
-    /*printf("[KVS Master] Frame present in stdin\n");*/
-    /*packets[0] = av_packet_alloc();*/
-    /*memcpy(packets[0], packet, sizeof(*packet));*/
-    /*for (int i = 1; i < 10; i++) {*/
-    /*if (av_read_frame(context, packet) != STATUS_SUCCESS) {*/
-    /*if (packet->size <= 0) {*/
-    /*printf("no frames in stdin\n");*/
-    /*usleep(1 / 15);*/
-    /*}*/
-    /*};*/
-    /*packets[i] = av_packet_alloc();*/
-    /*memcpy(packets[i], packet, sizeof(*packet));*/
-    /*}*/
-    /*pthread_create(&fakeReadThread, NULL, fakeStdinRead, NULL);*/
-    /*retStatus = readFrameFromDisk(NULL, &frameSize, "./opusSampleFrames/sample-001.opus");*/
-    /*if (retStatus != STATUS_SUCCESS) {*/
-    /*printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", retStatus);*/
-    /*goto CleanUp;*/
-    /*}*/
-    /*printf("[KVS Master] Checked sample audio frame availability....available\n");*/
-
+#endif
     // Initialize KVS WebRTC. This must be done before anything else, and must only be done once.
     retStatus = initKvsWebRtc();
     if (retStatus != STATUS_SUCCESS) {
@@ -185,7 +181,6 @@ INT32 main(INT32 argc, CHAR* argv[])
         goto CleanUp;
     }
     printf("[KVS Master] Signaling client created successfully\n");
-
     // Enable the processing of the messages
     retStatus = signalingClientFetchSync(pSampleConfiguration->signalingClientHandle);
     if (retStatus != STATUS_SUCCESS) {
@@ -271,80 +266,10 @@ CleanUp:
     // EXIT_FAILURE and EXIT_SUCCESS macros for portability.
     return STATUS_FAILED(retStatus) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-void* fakeStdinRead()
-{
-    printf("starting fake read\n");
-    while (1) {
-        usleep(1 / 15);
-        av_read_frame(context, packet);
-        if (fakeread_conditionvar == 1) {
-            break;
-        }
-    }
-    printf("ending fake read\n");
 
-    return NULL;
-    /*int MAX_READ_BUF = 32879; BYTE b[MAX_READ_BUF];*/
-    /*while (1) {*/
-    /*read(fileno(stdin), b, MAX_READ_BUF);*/
-    /*if (fakeread_conditionvar == 1) {*/
-    /*break;*/
-    /*}*/
-    /*}*/
-    /*printf("fake read ended\n");*/
-    /*return NULL;*/
-}
-/*STATUS ReadFromStdin(PBYTE Frame, PUINT32 Size)*/
-/*{*/
-/*printf("calling\n");*/
-/*[>int bytesRead = read(fileno(stdin), Frame, 0x500000);<]*/
-/*int bytesRead = read(fileno(stdin), Frame, 0x500000);*/
-/**Size = bytesRead;*/
-/*if (bytesRead < 0) {*/
-/*printf("[KVS Master] ReadFromStdin(): read failed with the errno code 0x%x \n", errno);*/
-/*return -1;*/
-/*}*/
-/*if (bytesRead == 0) {*/
-/*printf("[KVS Master] ReadFromStdin(): zero bytes Read \n");*/
-/*return -1;*/
-/*}*/
-/*printf("%d\n", bytesRead);*/
-/*fwrite(Frame, sizeof(BYTE), bytesRead, fp);*/
-
-/*return STATUS_SUCCESS;*/
-/*}*/
-
-STATUS readFrameFromDisk(PBYTE pFrame, PUINT32 pSize, PCHAR frameFilePath)
-{
-    STATUS retStatus = STATUS_SUCCESS;
-    UINT64 size = 0;
-
-    if (pSize == NULL) {
-        printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", STATUS_NULL_ARG);
-        goto CleanUp;
-    }
-
-    size = *pSize;
-
-    // Get the size and read into frame
-    retStatus = readFile(frameFilePath, TRUE, pFrame, &size);
-    if (retStatus != STATUS_SUCCESS) {
-        printf("[KVS Master] readFile(): operation returned status code: 0x%08x \n", retStatus);
-        goto CleanUp;
-    }
-
-CleanUp:
-
-    if (pSize != NULL) {
-        *pSize = (UINT32) size;
-    }
-
-    return retStatus;
-}
-
+STATUS read_from_stdin(uint8_t** frame, uint32_t* size, enum STDIN_READ_DATA_TYPE TYPE);
 PVOID sendVideoPackets(PVOID args)
 {
-    fakeread_conditionvar = 1;
     PSampleConfiguration pSampleConfiguration = (PSampleConfiguration) args;
     RtcEncoderStats encoderStats;
     Frame frame;
@@ -365,57 +290,21 @@ PVOID sendVideoPackets(PVOID args)
     lastFrameTime = startTime;
 
     while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {
-        /*if (packets[0] != NULL) {*/
-        /*AVPacket* TempPacket;*/
-        /*for (int j = 0; j < 10; j++) {*/
-        /*TempPacket = packets[j];*/
-        /*printf("reading buffer %d\n", j);*/
-        /*pSampleConfiguration->pVideoFrameBuffer = TempPacket->data;*/
-        /*pSampleConfiguration->videoBufferSize = TempPacket->size;*/
-        /*frame.frameData = pSampleConfiguration->pVideoFrameBuffer;*/
-        /*frame.size = TempPacket->size;*/
-
-        /*// based on bitrate of samples/h264SampleFrames/frame-**/
-        /*encoderStats.width = 640;*/
-        /*encoderStats.height = 480;*/
-        /*encoderStats.targetBitrate = 262000;*/
-        /*frame.presentationTs += SAMPLE_VIDEO_FRAME_DURATION;*/
-
-        /*MUTEX_LOCK(pSampleConfiguration->streamingSessionListReadLock);*/
-        /*for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {*/
-        /*status = writeFrame(pSampleConfiguration->sampleStreamingSessionList[i]->pVideoRtcRtpTransceiver, &frame);*/
-        /*encoderStats.encodeTimeMsec = 4; // update encode time to an arbitrary number to demonstrate stats update*/
-        /*updateEncoderStats(pSampleConfiguration->sampleStreamingSessionList[i]->pVideoRtcRtpTransceiver, &encoderStats);*/
-        /*if (status != STATUS_SRTP_NOT_READY_YET) {*/
-        /*if (status != STATUS_SUCCESS) {*/
-        /*#ifdef VERBOSE*/
-        /*printf("writeFrame() failed with 0x%08x\n", status);*/
-        /*#endif*/
-        /*}*/
-        /*}*/
-        /*}*/
-        /*MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);*/
-
-        /*// Adjust sleep in the case the sleep itself and writeFrame take longer than expected. Since sleep makes sure that the thread*/
-        /*// will be paused at least until the given amount, we can assume that there's no too early frame scenario.*/
-        /*// Also, it's very unlikely to have a delay greater than SAMPLE_VIDEO_FRAME_DURATION, so the logic assumes that this is always*/
-        /*// true for simplicity.*/
-        /*elapsed = lastFrameTime - startTime;*/
-        /*THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);*/
-        /*lastFrameTime = GETTIME();*/
-        /*av_packet_free(&packets[j]);*/
-        /*packets[j] = NULL;*/
-        /*}*/
-        /*}*/
-        /*printf("okeeeeeh\n");*/
-        /*printf("okeeh\n");*/
+#if ffmpeg
         while (av_read_frame(context, packet) != STATUS_SUCCESS)
             ;
-
         pSampleConfiguration->pVideoFrameBuffer = packet->data;
         pSampleConfiguration->videoBufferSize = packet->size;
         frame.frameData = pSampleConfiguration->pVideoFrameBuffer;
         frame.size = packet->size;
+#else
+        uint32_t SizeRead = read_from_stdin(&frame.frameData, &frameSize, 0);
+        pSampleConfiguration->pVideoFrameBuffer = frame.frameData;
+        pSampleConfiguration->videoBufferSize = frameSize;
+        frame.frameData = pSampleConfiguration->pVideoFrameBuffer;
+        frame.size = pSampleConfiguration->videoBufferSize;
+
+#endif
 
         // based on bitrate of samples/h264SampleFrames/frame-*
         encoderStats.width = 640;
@@ -438,19 +327,34 @@ PVOID sendVideoPackets(PVOID args)
         }
         MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);
 
-        // Adjust sleep in the case the sleep itself and writeFrame take longer than expected. Since sleep makes sure that the thread
-        // will be paused at least until the given amount, we can assume that there's no too early frame scenario.
-        // Also, it's very unlikely to have a delay greater than SAMPLE_VIDEO_FRAME_DURATION, so the logic assumes that this is always
-        // true for simplicity.
         elapsed = lastFrameTime - startTime;
-        /*THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);*/
         lastFrameTime = GETTIME();
     }
 CleanUp:
-
-    /*CHK_LOG_ERR(retStatus);*/
-
-    /*return (PVOID) (ULONG_PTR) retStatus;*/
+    return STATUS_SUCCESS;
+}
+STATUS read_from_stdin(uint8_t** frame, uint32_t* size, enum STDIN_READ_DATA_TYPE TYPE)
+{
+    printf("callback running i guess\n");
+    if (TYPE == STDIN_READ_VIDEO) {
+        while (read(video_pipe, size, sizeof(int)) == 0)
+            ;
+        (*frame) = realloc(*frame, sizeof(uint8_t) * (*size));
+        int bytesRead = read((video_pipe), *frame, sizeof(uint8_t) * (*size));
+        while (bytesRead < *size) {
+            bytesRead += read((video_pipe), *frame + bytesRead, sizeof(uint8_t) * (*size) - bytesRead);
+        }
+    } else if (TYPE == STDIN_READ_AUDIO) {
+        while (read(audio_pipe, size, sizeof(int)) == 0)
+            ;
+        (*frame) = realloc(*frame, sizeof(uint8_t) * (*size));
+        int bytesRead = read((audio_pipe), *frame, sizeof(uint8_t) * (*size));
+        while (bytesRead < *size) {
+            bytesRead += read((audio_pipe), *frame + bytesRead, sizeof(uint8_t) * (*size) - bytesRead);
+        }
+    } else {
+        printf("read_frame_frome_stdin(): read failed invalid file type");
+    }
     return STATUS_SUCCESS;
 }
 
@@ -472,34 +376,16 @@ PVOID sendAudioPackets(PVOID args)
     /*frame.presentationTs = 0;*/
 
     /*while (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->appTerminateFlag)) {*/
-    /*fileIndex = fileIndex % NUMBER_OF_OPUS_FRAME_FILES + 1;*/
-    /*snprintf(filePath, MAX_PATH_LEN, "./opusSampleFrames/sample-%03d.opus", fileIndex);*/
-
-    /*retStatus = readFrameFromDisk(NULL, &frameSize, filePath);*/
-    /*if (retStatus != STATUS_SUCCESS) {*/
-    /*printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", retStatus);*/
-    /*goto CleanUp;*/
+    /*int ret = read_from_stdin(&frame.frameData, &frameSize, STDIN_READ_AUDIO);*/
+    /*if (ret != STATUS_SUCCESS) {*/
+    /*printf("read_failed\n");*/
     /*}*/
-
-    /*// Re-alloc if needed*/
-    /*if (frameSize > pSampleConfiguration->audioBufferSize) {*/
-    /*pSampleConfiguration->pAudioFrameBuffer = (UINT8*) MEMREALLOC(pSampleConfiguration->pAudioFrameBuffer, frameSize);*/
-    /*if (pSampleConfiguration->pAudioFrameBuffer == NULL) {*/
-    /*printf("[KVS Master] Audio frame Buffer reallocation failed...%s (code %d)\n", strerror(errno), errno);*/
-    /*printf("[KVS Master] MEMREALLOC(): operation returned status code: 0x%08x \n", STATUS_NOT_ENOUGH_MEMORY);*/
-    /*goto CleanUp;*/
-    /*}*/
-    /*}*/
-
-    /*frame.frameData = pSampleConfiguration->pAudioFrameBuffer;*/
-    /*frame.size = frameSize;*/
-
-    /*retStatus = readFrameFromDisk(frame.frameData, &frameSize, filePath);*/
-    /*if (retStatus != STATUS_SUCCESS) {*/
-    /*printf("[KVS Master] readFrameFromDisk(): operation returned status code: 0x%08x \n", retStatus);*/
-    /*goto CleanUp;*/
-    /*}*/
-
+    /*// based on bitrate of samples/h264SampleFrames/frame-**/
+    /*MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);*/
+    /*pSampleConfiguration->pVideoFrameBuffer = frame.frameData;*/
+    /*pSampleConfiguration->videoBufferSize = frameSize;*/
+    /*frame.frameData = pSampleConfiguration->pVideoFrameBuffer;*/
+    /*frame.size = pSampleConfiguration->videoBufferSize;*/
     /*frame.presentationTs += SAMPLE_AUDIO_FRAME_DURATION;*/
 
     /*MUTEX_LOCK(pSampleConfiguration->streamingSessionListReadLock);*/
@@ -514,7 +400,7 @@ PVOID sendAudioPackets(PVOID args)
     /*}*/
     /*}*/
     /*MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);*/
-    /*THREAD_SLEEP(SAMPLE_AUDIO_FRAME_DURATION);*/
+    /*[>THREAD_SLEEP(SAMPLE_AUDIO_FRAME_DURATION);<]*/
     /*}*/
 
     /*CleanUp:*/
